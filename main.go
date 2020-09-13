@@ -10,6 +10,21 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+func run(shell string, command string, args []string, events map[string]fsnotify.Op) {
+	args[0] = "-c"
+	args[1] = command
+	if len(shell) < 2 || (shell[len(shell)-2:] != "es" && shell[len(shell)-2:] != "rc") {
+		args = append(args, shell)
+	}
+	for ev := range events {
+		args = append(args, ev)
+	}
+	cmd := exec.Command(shell, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+}
+
 func main() {
 	debounce := 300 * time.Millisecond
 	timeout := 12 * time.Hour
@@ -103,42 +118,20 @@ func main() {
 	timer.Stop()
 	htimer := time.NewTimer(timeout)
 
+	cargs := make([]string, 2, len(events)+3)
+	run(shell, command, cargs, events)
+	events = map[string]fsnotify.Op{}
 	for {
 		select {
 		case <-htimer.C:
 			htimer.Reset(timeout)
-			args := make([]string, 2, len(events)+3)
-			args[0] = "-c"
-			args[1] = command
-			if len(shell) < 2 || (shell[len(shell)-2:] != "es" && shell[len(shell)-2:] != "rc") {
-				args = append(args, shell)
-			}
-			for ev := range events {
-				args = append(args, ev)
-			}
-			cmd := exec.Command(shell, args...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Run()
-
+			cargs := make([]string, 2, len(events)+3)
+			run(shell, command, cargs, events)
 			events = map[string]fsnotify.Op{}
 		case <-timer.C:
-			args := make([]string, 2, len(events)+3)
-			args[0] = "-c"
-			args[1] = command
-			if len(shell) < 2 || (shell[len(shell)-2:] != "es" && shell[len(shell)-2:] != "rc") {
-				args = append(args, shell)
-			}
-			for ev := range events {
-				args = append(args, ev)
-			}
-			cmd := exec.Command(shell, args...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Run()
-
+			cargs := make([]string, 2, len(events)+3)
+			run(shell, command, cargs, events)
 			events = map[string]fsnotify.Op{}
-
 		case ev := <-watcher.Events:
 			match := false
 			for _, glob := range globs {
