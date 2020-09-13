@@ -10,7 +10,13 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-func run(shell string, command string, args []string, events map[string]fsnotify.Op) {
+func run(shell string, command string, args []string, events map[string]fsnotify.Op, clear bool) {
+	if clear {
+		cmd := exec.Command(shell, "-c", "clear")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+	}
 	args[0] = "-c"
 	args[1] = command
 	if len(shell) < 2 || (shell[len(shell)-2:] != "es" && shell[len(shell)-2:] != "rc") {
@@ -26,6 +32,7 @@ func run(shell string, command string, args []string, events map[string]fsnotify
 }
 
 func main() {
+	clear := false
 	debounce := 300 * time.Millisecond
 	timeout := 12 * time.Hour
 	eventMask := fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Chmod | fsnotify.Rename
@@ -33,6 +40,11 @@ func main() {
 
 	i := 1
 	for i < len(os.Args)-1 {
+		if os.Args[i] == "-c" {
+			clear = true
+			i += 1
+			continue
+		}
 		if os.Args[i] == "-d" {
 			var err error
 			debounce, err = time.ParseDuration(os.Args[i+1])
@@ -119,18 +131,18 @@ func main() {
 	htimer := time.NewTimer(timeout)
 
 	cargs := make([]string, 2, len(events)+3)
-	run(shell, command, cargs, events)
+	run(shell, command, cargs, events, clear)
 	events = map[string]fsnotify.Op{}
 	for {
 		select {
 		case <-htimer.C:
 			htimer.Reset(timeout)
 			cargs := make([]string, 2, len(events)+3)
-			run(shell, command, cargs, events)
+			run(shell, command, cargs, events, clear)
 			events = map[string]fsnotify.Op{}
 		case <-timer.C:
 			cargs := make([]string, 2, len(events)+3)
-			run(shell, command, cargs, events)
+			run(shell, command, cargs, events, clear)
 			events = map[string]fsnotify.Op{}
 		case ev := <-watcher.Events:
 			match := false
