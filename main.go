@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +12,8 @@ import (
 
 func main() {
 	debounce := 300 * time.Millisecond
-	eventMask := fsnotify.Create | fsnotify.Write | fsnotify.Chmod | fsnotify.Rename
+	timeout := 12 * time.Hour
+	eventMask := fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Chmod | fsnotify.Rename
 	globs := []string{}
 
 	i := 1
@@ -20,6 +22,17 @@ func main() {
 			var err error
 			debounce, err = time.ParseDuration(os.Args[i+1])
 			if err != nil {
+				fmt.Println("err:", err)
+				usageError()
+			}
+			i += 2
+			continue
+		}
+		if os.Args[i] == "-t" {
+			var err error
+			timeout, err = time.ParseDuration(os.Args[i+1])
+			if err != nil {
+				fmt.Println("err:", err)
 				usageError()
 			}
 			i += 2
@@ -88,9 +101,27 @@ func main() {
 	events := map[string]fsnotify.Op{}
 	timer := time.NewTimer(debounce)
 	timer.Stop()
+	htimer := time.NewTimer(timeout)
 
 	for {
 		select {
+		case <-htimer.C:
+			htimer.Reset(timeout)
+			args := make([]string, 2, len(events)+3)
+			args[0] = "-c"
+			args[1] = command
+			if len(shell) < 2 || (shell[len(shell)-2:] != "es" && shell[len(shell)-2:] != "rc") {
+				args = append(args, shell)
+			}
+			for ev := range events {
+				args = append(args, ev)
+			}
+			cmd := exec.Command(shell, args...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Run()
+
+			events = map[string]fsnotify.Op{}
 		case <-timer.C:
 			args := make([]string, 2, len(events)+3)
 			args[0] = "-c"
@@ -130,9 +161,10 @@ func main() {
 }
 
 func usageError() {
-	os.Stderr.WriteString(`usage: on-change [-d debounce] [-e eventmask] [-g glob] FILES... CMD
+	os.Stderr.WriteString(`usage: on-change [-d debounce] [-t timeout] [-e eventmask] [-g glob] FILES... CMD
 	-d  debounce time. (default: 300ms)
-	-e  event mask. (default: cwma)
+	-t  timeout time. force rerun after this time (default: 12hour)
+	-e  event mask. (default: cwrma)
 	    include these characters to listen for these events:
 		c create
 		w write
