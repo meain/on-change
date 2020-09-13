@@ -141,6 +141,7 @@ func main() {
 			run(shell, command, cargs, events, clear)
 			events = map[string]fsnotify.Op{}
 		case <-timer.C:
+			htimer.Reset(timeout)
 			cargs := make([]string, 2, len(events)+3)
 			run(shell, command, cargs, events, clear)
 			events = map[string]fsnotify.Op{}
