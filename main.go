@@ -167,7 +167,8 @@ func main() {
 }
 
 func usageError() {
-	os.Stderr.WriteString(`usage: on-change [-d debounce] [-t timeout] [-e eventmask] [-g glob] FILES... CMD
+	os.Stderr.WriteString(`usage: on-change [-c clear] [-d debounce] [-t timeout] [-e eventmask] [-g glob] FILES... CMD
+	-c  clear screen before run. (default: false)
 	-d  debounce time. (default: 300ms)
 	-t  timeout time. force rerun after this time (default: 12hour)
 	-e  event mask. (default: cwrma)
