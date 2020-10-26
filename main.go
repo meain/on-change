@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -33,6 +35,7 @@ func run(shell string, command string, args []string, events map[string]fsnotify
 
 func main() {
 	clear := false
+	sigwinch := false
 	debounce := 300 * time.Millisecond
 	timeout := 12 * time.Hour
 	eventMask := fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Chmod | fsnotify.Rename
@@ -42,6 +45,11 @@ func main() {
 	for i < len(os.Args)-1 {
 		if os.Args[i] == "-c" {
 			clear = true
+			i += 1
+			continue
+		}
+		if os.Args[i] == "-s" {
+			sigwinch = true
 			i += 1
 			continue
 		}
@@ -133,16 +141,23 @@ func main() {
 	cargs := make([]string, 2, len(events)+3)
 	run(shell, command, cargs, events, clear)
 	events = map[string]fsnotify.Op{}
+
+	sig := make(chan os.Signal, 1)
+	if sigwinch {
+		signal.Notify(sig, syscall.SIGWINCH)
+	}
+
 	for {
 		select {
 		case <-htimer.C:
 			htimer.Reset(timeout)
-			cargs := make([]string, 2, len(events)+3)
+			run(shell, command, cargs, events, clear)
+			events = map[string]fsnotify.Op{}
+		case <-sig:
 			run(shell, command, cargs, events, clear)
 			events = map[string]fsnotify.Op{}
 		case <-timer.C:
 			htimer.Reset(timeout)
-			cargs := make([]string, 2, len(events)+3)
 			run(shell, command, cargs, events, clear)
 			events = map[string]fsnotify.Op{}
 		case ev := <-watcher.Events:
@@ -171,6 +186,7 @@ func usageError() {
 	-c  clear screen before run. (default: false)
 	-d  debounce time. (default: 300ms)
 	-t  timeout time. force rerun after this time (default: 12hour)
+	-s  rerun on sigwinch (rerun when terminal resize)
 	-e  event mask. (default: cwrma)
 	    include these characters to listen for these events:
 		c create
